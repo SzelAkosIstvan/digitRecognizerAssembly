@@ -221,21 +221,21 @@ main:
 
 .vizsgaldAKepet:
     call rajzEgyszerusites; ez biztos vegrehajtodik es biztos elsokent szoval szimplan meghivom
-    mov eax, linTxt
+    mov eax, convTxt
     xor ebx, ebx
     call fio_open
     mov ebx, belvasottSzoveg
     mov ecx, 500
     call fio_read
     call fio_close
-    mov ecx, 17;vizsgalando karakter alap poziciojanak beallitasa
+    mov ecx, 15;17;vizsgalando karakter alap poziciojanak beallitasa
 ;meghivasok es vizsgalatok
 .meghivasok:
     mov al, [belvasottSzoveg+ecx]
     ;call mio_writechar
     cmp al, 76
     jne .nemLin
-    add ecx, 7
+    add ecx, 10 ;7
     ;beolvas az in erteket
     xor edi, edi
     xor eax, eax
@@ -274,7 +274,7 @@ main:
     mov [linkimenet], edi
     ;call io_writeint
     ;call io_writeln
-    add ecx, 2
+    add ecx, 1
     ;beolvas az out erteket
     
     pusha
@@ -287,9 +287,79 @@ main:
     pusha
     call ReLU
     popa
-    add ecx, 6
+    add ecx, 5
     jmp .meghivasok
 .nemReLU:
+    cmp al, 67
+    jne .nemConv
+    ;itt kell leptetni az ecx-et es utana szamokat beolvasni de majd csak kesobb
+    
+    
+    add ecx, 8 ;7
+    ;beolvas az in erteket
+    xor edi, edi
+    xor eax, eax
+.convIn:
+    mov al, [belvasottSzoveg+ecx]
+    ;call mio_writechar;itt kiirattam a 13as karaktert is mielott lezartam volna az olvasast
+    cmp al, 48
+    jl .convInSkip
+    cmp al, 57
+    jg .convInSkip
+    sub al, 48
+    imul edi, 10
+    add edi, eax
+    inc ecx
+    jmp .convIn
+.convInSkip:
+    mov [linbemenet], edi              ;edi tarolja az elso beolvasott erteket
+    ;call io_writeint 
+    ;call io_writeln
+    add ecx, 5
+    xor edi, edi
+    xor eax, eax
+.convOut:
+    mov al, [belvasottSzoveg+ecx]
+    ;call mio_writechar
+    cmp al, 48
+    jl .convOutSkip
+    cmp al, 57
+    jg .convOutSkip
+    sub al, 48
+    imul edi, 10
+    add edi, eax
+    inc ecx
+    jmp .convOut
+.convOutSkip:
+    mov [linkimenet], edi
+    ;call io_writeint
+    ;call io_writeln
+    add ecx, 1
+    ;beolvas az out erteket
+
+
+
+    pusha
+    pusha
+    mov eax, [matrixmeret]
+    cdq
+    mov ecx, 2
+    idiv ecx; eax 28
+    mov [matrixmeret], eax
+    popa
+    call Conv;uj Conv
+    popa
+    ;add ecx, 2
+    jmp .meghivasok
+.nemConv:
+    cmp al, 77
+    jne .nemMaxPooling
+    pusha
+    call MaxPool;uj MaxPooling
+    popa
+    add ecx, 8
+    jmp .meghivasok
+.nemMaxPooling:
     cmp al, 65
     jne .irkdihamered
     pusha
@@ -1422,6 +1492,7 @@ kimentesEredmeny:
 
 
 rajzEgyszerusites:      ;nearest neighbour method (tehat az elemek tobbsege 255 maybe)
+    mov dword [matrixmeret], 56
     xor ecx, ecx
 .huszonnyolcasCiklusSorokra:
     xor edx, edx
@@ -1504,7 +1575,7 @@ linearLayer:
     imul edi, 4
     ;mov eax, esi
     ;call io_writeint
-    mov eax, linBin
+    mov eax, convBin
     xor ebx, ebx
     call fio_open
 
@@ -1608,6 +1679,10 @@ linearLayer:
     ; popa
 
     call kimentesEredmeny
+    push ebx
+    mov ebx, [linkimenet]
+    mov [binkimenet], ebx
+    pop ebx
     ret
 
 
@@ -1624,7 +1699,7 @@ ReLU:;vegigmengy a vektoron es minden elemet osszehasonlit 0val, amin <0, 0 lesz
     movss [resize+ebx*4], xmm5
 .nagyobbmintNULL:
     inc ebx
-    cmp ebx, [linkimenet]
+    cmp ebx, [binkimenet]
     jl .osszesElemVizsgalata
     popa
     call kimentesEredmeny
@@ -1660,79 +1735,403 @@ ArgMax:
     ret
 
 Conv:
-    xor ecx, ecx
-.huszonnyolcasCiklusSorokra:
-    xor edx, edx
-.huszonnyolcasCiklusOszlopokra:
-    xor edi, edi
-    xor eax, eax;osszeg tarolasara hasznalom
-.huszonkettesCiklusSorokra:
-    xor esi, esi
-.huszonkettesCiklusOszlopokra:
+    pusha
+    mov eax, convBin
+    xor ebx, ebx
+    call fio_open
+    push eax
 
-    push esi
+    ;resize -> eredmeny - kibovitve a 0 marginnal
+    mov eax, [matrixmeret]  ;negyzetre kell meg emelni
+    mov esi, eax
+    imul esi, eax
+    imul esi, [linbemenet]
+    dec esi
+    add eax, 2;ennyivel kell boviteni minden esetben
+    mov ebx, eax
+    imul eax, ebx
+    imul eax, [linbemenet]
+    dec eax
+    sub eax, ebx;matrixmeret
+    dec eax                 ;-32
+
+    xor edx, edx
+.startt:
+    xor ecx, ecx
+.rrloop:
+    xor ebx, ebx
+.rloop:
+    movss xmm0, [resize+esi*4]
+    movss [eredmeny+eax*4], xmm0
+
+    dec esi
+    dec eax
+
+    inc ebx
+    cmp ebx, [matrixmeret]
+    jl .rloop
+
+    sub eax, 2
+
+    inc ecx
+    cmp ecx, [matrixmeret]
+    jl .rrloop
+
+    sub eax, [matrixmeret]
+    sub eax, [matrixmeret]
+    sub eax, 4
+
+    inc edx
+    cmp edx, [linbemenet]
+    jl .startt
+
+
+    pop eax
+    push eax
+
+    
+    mov ebx, binskipmemory
+    mov ecx, [binskip]
+    call fio_read
+    mov ecx, [linkimenet]
+    imul ecx, 36
+    imul ecx, [linbemenet]
+    call fio_read
+    mov ebx, bias
+    mov ecx, [linkimenet]
+    imul ecx, 4
+    call fio_read
+    call fio_close
+    mov eax, convBin
+    xor ebx, ebx
+    call fio_open
+    mov ebx, binskipmemory
+    mov ecx, [binskip]
+    call fio_read
+
+    xor edi, edi
+    mov esi, [linkimenet]
+    xor ebx, ebx
+.kovfilter:
+    inc edi
+    push ebx
+    mov ebx, filter;beolvastam a matrixot           lehet, hogy csak egy bias erteket kene beolvasni
+    mov ecx, 36;9x4
+    imul ecx, [linbemenet]
+    call fio_read
+
+    ;mov ebx, bias
+    ;mov ecx, 4
+    ;call fio_read
+    ;mov ecx, 36
+    ;imul ecx, [linbemenet]
+
+    mov edx, [binskip]
+    add edx, ecx;36xlinbemenet
+    mov [binskip], edx
+
+    pop ebx
+    push edi                ; mentjük az edi-t
+    push esi                ; mentjük az esi-t
+    xor edi, edi            ; nullázzuk az edi-t
+    mov esi, [matrixmeret]              ; iteráció számát beállítjuk (lehet, hogy inkább más érték) 28
+    
+    push eax
+    xor eax, eax
+    xorps xmm0, xmm0
+
+.sor:
     push edi
-    push edx
+    mov eax, edi
+    xor edi, edi            ; sor elején nullázzuk az edi-t
+.oszloo:
+    ;xorps xmm0, xmm0
+
+    ;ide kell a for ciklus ami linkimenet meretu
     push ecx
-    imul ecx, 616;hany kis negyzetekbol allo sor van elotte
-    imul edx, 22;hanny kis negyzet van elotte (bal oldalan) amit mar atneztem
-    imul edi, 616;a kis negyzeten belul hany sort neztem mar at
-    add ecx, edx
-    add ecx, edi
-    add ecx, esi
-    ; mov esi, 255
-    ; xor ebx, ebx;vagy ez vagy az also                 itt lesz a szorzas
-    ; mov bl, [resize+ecx*4]
-    ; cmp esi, ebx
-    ; jne .mindenVisszaEsFolytat
-    ; inc eax
-    ; .mindenVisszaEsFolytat:
-    movss xmm5, [resize+ecx*4]
-    ;movss xmm6, [beconv+eax*4];meg nincs beolvasva es deklaralva se
-    mulss xmm5, xmm6
-    addss xmm0, xmm5
+    push edx
+    xor ecx, ecx
+    mov edx, [linbemenet]
+
+.layers:
+
+                                                        ; lenyeges műveletek itt
+    ;asd
+    pusha
+    ;eax es edi kellenek majd szorzasra
+    mov esi, [matrixmeret];[meret]
+    add esi, 2
+    mov edx, esi
+    imul edx, esi
+    imul edx, ecx           ;edx
+
+    imul eax, esi           ;eax
+                            ;edi
+    ;mov ebx, 9
+    ;imul ebx, ecx           ;ebx a filterekhez ha kell
+
+    add edx, eax
+    add edx, edi
+    imul edx, 4
+    ;sor1
+    push ecx
+    imul ecx, 36
+
+    movss xmm1, [filter+ecx]
+    movss xmm2, [eredmeny+edx]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+1*4]
+    movss xmm2, [eredmeny+edx+esi*4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+2*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    
+    movss xmm1, [filter+ecx]
+    movss xmm2, [eredmeny+edx+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+1*4]
+    movss xmm2, [eredmeny+edx+esi*4+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+2*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    
+    movss xmm1, [filter+ecx]
+    movss xmm2, [eredmeny+edx+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+1*4]
+    movss xmm2, [eredmeny+edx+esi*4+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+2*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    
+    ;sor2
+
+    movss xmm1, [filter+ecx+3*4]
+    movss xmm2, [eredmeny+edx]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+4*4]
+    movss xmm2, [eredmeny+edx+esi*4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+5*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    
+    movss xmm1, [filter+ecx+3*4]
+    movss xmm2, [eredmeny+edx+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+4*4]
+    movss xmm2, [eredmeny+edx+esi*4+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+5*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    
+    movss xmm1, [filter+ecx+3*4]
+    movss xmm2, [eredmeny+edx+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+4*4]
+    movss xmm2, [eredmeny+edx+esi*4+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+5*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    
+    ;sor3
+
+    movss xmm1, [filter+ecx+6*4]
+    movss xmm2, [eredmeny+edx]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+7*4]
+    movss xmm2, [eredmeny+edx+esi*4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+8*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    
+    movss xmm1, [filter+ecx+6*4]
+    movss xmm2, [eredmeny+edx+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+7*4]
+    movss xmm2, [eredmeny+edx+esi*4+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+8*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4+4]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    
+    movss xmm1, [filter+ecx+6*4]
+    movss xmm2, [eredmeny+edx+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+7*4]
+    movss xmm2, [eredmeny+edx+esi*4+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
+    movss xmm1, [filter+ecx+8*4]
+    movss xmm2, [eredmeny+edx+esi*4+esi*4+8]
+    mulss xmm1, xmm2
+    addss xmm0, xmm1
 
     pop ecx
+    popa
+    inc ecx
+    cmp ecx, edx
+    jl .layers
     pop edx
+    pop ecx
+
+
+    movss xmm1, [bias+ecx*4]
+    addss xmm0, xmm1
+    movss [resize+ebx*4], xmm0;eredmeny
+    xorps xmm0, xmm0
+
+    inc ebx
+    ;mov eax, ebx
+    ;call io_writeint
+    ;call io_writeln
+
+
+    inc edi                 ; növeljük az oszlop számlálót
+    cmp edi, esi            ; összehasonlítás, ha elérte a sor végét
+    jl .oszloo              ; ha nem, folytatjuk az oszlopokat
+    ; ha igen, visszatérünk a sorhoz
+
+
     pop edi
-    pop esi
-
-    inc esi
-    cmp esi, 22
-    jl .huszonkettesCiklusOszlopokra
-
     inc edi
-    cmp edi, 22
-    jl .huszonkettesCiklusSorokra
+    cmp edi, esi             ; ha a sorok száma eléri a 36-ot (az eredeti matrix méret)
+    jl .sor                 ; ha nem, folytatjuk a sorokat
 
-    imul eax, 2
-    cvtsi2ss xmm5, eax
-    ;push edi
-    mov edi, 4;968
-    cvtsi2ss xmm6, edi
-    ;idiv edi;968
-    divss xmm5, xmm6
-    ;pop edi
-    mov eax, 1
-    cvtsi2ss xmm6, eax
-    subss xmm5, xmm6
+    pop eax
 
-    mov eax, [holtartunk]
-    movss [eredmeny+eax*4], xmm5
-    ; movss xmm0, xmm5
-    ; call io_writeflt
-    ; call io_writeln
+    pop esi                 ; visszaállítjuk az eredeti esi-t
+    pop edi                 ; visszaállítjuk az eredeti edi-t
+
+    cmp edi, esi; filterek szama
+    jl .kovfilter
+
+    pop eax
+    call fio_close
+
+    pusha
+    xor eax, eax
+    mov ebx, [linkimenet]
+    mov ecx, [matrixmeret]
+    mov edx, ecx
+    imul ecx, edx
+    imul ecx, ebx
+.masolass:
+    movss xmm0, [resize+eax*4]
+    movss [eredmeny+eax*4], xmm0
     inc eax
-    mov [holtartunk], eax
-    ;megfelelo helyre pozicionalas
+    cmp eax, ecx
+    jl .masolass
+    popa
+.vege:
+    mov edx, [binskip]
+    mov ebx, [linkimenet]
+    imul ebx, 4
+    add edx, ebx;36xlinbemenet
+    mov [binskip], edx
 
-    add edx, 1
-    cmp edx, 28
-    jl .huszonnyolcasCiklusOszlopokra
+    mov eax, [linkimenet]
+    imul eax, [matrixmeret]
+    imul eax, [matrixmeret]
+    mov [binkimenet], eax
 
-    add ecx, 22;azert 22, mert minden kis negyzetben 22x22 elemet vizsgalunk igy 22 elemmel megyunk lejjebb az y on es 28x22=616
-    cmp ecx, 616
-    jl .huszonnyolcasCiklusSorokra
+    popa
+    ret
+
+MaxPool:
+    pusha
+    mov eax, [matrixmeret]
+    add eax, 2
+    cdq
+    mov ecx, 2
+    idiv ecx; eax 15
+    dec eax
+    xor esi, esi
+    xor ebx, ebx
+    xor ecx, ecx
+    xor edx, edx
+    xor edi, edi
+.loop:
+    inc esi
+    mov ebx, ecx
+    add ecx, 2                  ;stride 2
+    inc edx
+    movss xmm1, [resize+ebx*4]
+    inc ebx
+    movss xmm2, [resize+ebx*4]
+    dec ebx
+    push eax
+    mov eax, [matrixmeret]
+    add ebx, eax               ;+a sor hossza
+    pop eax
+    movss xmm3, [resize+ebx*4]
+    inc ebx
+    movss xmm4, [resize+ebx*4]
+.muvelet:
+    ;feltelel
+    comiss xmm1, xmm2
+    ja .meh
+    movss xmm1, xmm2
+.meh:
+    comiss xmm1, xmm3
+    ja .mehe
+    movss xmm1, xmm3
+.mehe:
+    comiss xmm1, xmm4
+    ja .mehet
+    movss xmm1, xmm4
+.mehet:
+    ;itt vissza kell allitani valahova az xmm1 erteket
+    movss [eredmeny+esi*4], xmm1
+    ;megnezzuk, hogy vegigerte e a matrixon vagy sem es ugjrunk a kovetkezore
+    cmp eax, edx  ;meg kell valtoztatni, hogy mindig jot nezzen de majd kesobb
+    jg .loop
+    ;ket sorral lejjebb kell vinni az egesz temat           +1 = egy sor    +sorhossz = +1sor
+    xor edx, edx
+    push eax
+    mov eax, [matrixmeret]
+    add ecx, eax               ;+a sor hossza
+    pop eax
+    inc edi
+    mov ebx, eax
+    imul ebx, [linkimenet]
+    cmp ebx, edi
+    jg .loop
+.vege:
+    ;32x14x14=6272(-1)
+
+    popa
     ret
 
 section .bss
@@ -1740,7 +2139,7 @@ section .bss
     resize resd 400000
     sulyok resd 400000;ezt kell betolteni majd a linearis layerbez a .bin filebol
     eredmeny resd 400000
-    filter resd 3*3
+    filter resd 400000
     belvasottSzoveg resd 500
     binolvas resd 40000000
     binskipmemory resd 400000000
@@ -1764,6 +2163,9 @@ section .data
     convTxt db "conv_model.txt", 0
     holtartunk dd 0
     binskip dd 0
+    matrixmeret dd 0
+    bias dd 0
+    binkimenet dd 0
 
     
 	
